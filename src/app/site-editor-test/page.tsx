@@ -1,0 +1,16 @@
+"use client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import { config, fallbackDocument, normalizeDocument, type SiteDocument } from "./editor-types";
+import "@measured/puck/puck.css";
+const Puck = dynamic(() => import("@measured/puck").then((module) => module.Puck), { ssr: false });
+type Notice = { kind: "idle" | "loading" | "success" | "error"; text: string };
+export default function SiteEditorTest() {
+  const [tenantSlug, setTenantSlug] = useState(() => typeof window === "undefined" ? "sandbox" : new URLSearchParams(window.location.search).get("tenantSlug") || "sandbox"); const [document, setDocument] = useState<SiteDocument>(fallbackDocument); const [notice, setNotice] = useState<Notice>({ kind: "idle", text: "Ready" }); const frame = useRef<HTMLIFrameElement>(null);
+  const send = useCallback((data: SiteDocument) => frame.current?.contentWindow?.postMessage({ type: "TENANT_SITE_UPDATE", document: data }, window.location.origin), []);
+  useEffect(() => { const onMessage = (event: MessageEvent) => { if (event.origin !== window.location.origin || event.data?.type !== "TENANT_SITE_READY") return; send(document); }; window.addEventListener("message", onMessage); return () => window.removeEventListener("message", onMessage); }, [document, send]);
+  useEffect(() => { send(document); }, [document, send]);
+  const request = async (method: "GET" | "PUT" | "POST", action: string) => { setNotice({ kind: "loading", text: `${action}...` }); try { const response = await fetch(`/api/site-editor?tenantSlug=${encodeURIComponent(tenantSlug)}`, { method, headers: method === "GET" ? undefined : { "Content-Type": "application/json" }, body: method === "GET" ? undefined : JSON.stringify({ tenantSlug, document }) }); const body = await response.json(); if (!response.ok) throw new Error(body.error || "Request failed"); if (method === "GET") setDocument(normalizeDocument(body.document ?? body.data?.document ?? body)); setNotice({ kind: "success", text: `${action} complete` }); } catch (error) { setNotice({ kind: "error", text: error instanceof Error ? error.message : "Request failed" }); } };
+  const puckData = useMemo(() => document, [document]);
+  return <main className="editor-shell"><header className="editor-toolbar"><div><p className="eyebrow">Suty / Graphood</p><h1>Site editor test</h1></div><label>Tenant slug<input value={tenantSlug} onChange={(e) => setTenantSlug(e.target.value)} /></label><div className="toolbar-actions"><button onClick={() => request("GET", "Reload")}>Reload</button><button onClick={() => request("PUT", "Draft saved")}>Save Draft</button><button className="primary" onClick={() => request("POST", "Published")}>Publish</button></div></header><p className={`notice ${notice.kind}`}>{notice.text}</p><section className="editor-layout"><div className="puck-panel"><Puck config={config} data={puckData} onChange={(next) => setDocument(normalizeDocument(next))} onPublish={(next) => { setDocument(normalizeDocument(next)); void request("POST", "Published"); }} /></div><div className="preview-panel"><div className="panel-heading"><span>Live preview</span><small>iframe</small></div><iframe ref={frame} title="Suty site preview" src="/site-editor-test/preview" /></div></section></main>;
+}
