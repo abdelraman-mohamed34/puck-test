@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "register:graphood-blocks": "node --experimental-strip-types scripts/register-graphood-blocks.ts"
   },
   "dependencies": {
     "@measured/puck": "^0.20.2",
