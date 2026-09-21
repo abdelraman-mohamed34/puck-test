@@ -25,10 +25,56 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const TENANT_SLUG_PATTERN = /^[a-z0-9-]{3,100}$/;
+
+function normalizeTenantSlug(value: string | null): string | null {
+  const slug = value?.trim().toLowerCase() ?? "";
+  return TENANT_SLUG_PATTERN.test(slug) ? slug : null;
+}
+
+function resolveTenantSlug(headersList: Headers): string | null {
+  const forwardedHost = headersList.get("x-graphood-original-host")
+    ?? headersList.get("x-forwarded-host");
+  const host = forwardedHost?.split(",")[0]?.trim().split(":")[0].toLowerCase();
+  const rootDomain = (process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost")
+    .replace(/^https?:\/\//, "")
+    .split(":")[0]
+    .toLowerCase();
+  const fromHost = host?.endsWith(`.${rootDomain}`)
+    ? normalizeTenantSlug(host.slice(0, -(rootDomain.length + 1)))
+    : null;
+
+  return normalizeTenantSlug(headersList.get("x-tenant-slug")) ?? fromHost;
+}
+
 export const metadata: Metadata = {
   title: "Graphood Market",
   description: "Multi-tenant Platform",
 };
+
+function TenantNotFound() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-gray-50 px-6 text-center text-slate-800">
+      <div role="status">
+        <h1 className="text-4xl font-bold text-slate-900">Tenant Not Found</h1>
+        <p className="mt-3 text-base text-slate-600">
+          This tenant does not exist or is not active.
+        </p>
+      </div>
+    </main>
+  );
+}
+
+function RootDocument({ children }: { children: React.ReactNode }) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col">{children}</body>
+    </html>
+  );
+}
 
 export default async function RootLayout({
   children,
@@ -37,33 +83,34 @@ export default async function RootLayout({
 }) {
   const headersList = await headers();
 
-  const tenantSlug = headersList.get("x-tenant-slug") || "";
-  const demoTenantSlug = process.env.NEXT_PUBLIC_DEMO_TENANT_SLUG || "sandbox";
+  const tenantSlug = resolveTenantSlug(headersList);
+  if (!tenantSlug) {
+    return <RootDocument><TenantNotFound /></RootDocument>;
+  }
 
   const queryClient = getQueryClient();
 
-  let tenantData = null;
-  let resolvedTenantSlug = tenantSlug;
-  let isDemoMode = false;
+  let tenantData: Awaited<ReturnType<typeof getTenantDetails>> | null = null;
 
   try {
     tenantData = await queryClient.fetchQuery({
       queryKey: graphoodQueryKeys.tenant(tenantSlug),
       queryFn: () => getTenantDetails(tenantSlug, graphoodServerClient),
     });
-  } catch {
-    console.warn(`[Tenant Resolution] "${tenantSlug}" was not found; using demo tenant.`);
+  } catch (error) {
+    console.error(`[Tenant Resolution] Failed for "${tenantSlug}"`, error);
+  }
 
-    try {
-      resolvedTenantSlug = demoTenantSlug;
-      isDemoMode = true;
-      tenantData = await queryClient.fetchQuery({
-        queryKey: graphoodQueryKeys.tenant(demoTenantSlug),
-        queryFn: () => getTenantDetails(demoTenantSlug, graphoodServerClient),
-      });
-    } catch (demoError) {
-      console.error("[Demo Tenant Resolution Error]:", demoError);
-    }
+  const tenant = tenantData?.data.tenant;
+  const isValidTenant = Boolean(
+    tenantData?.success &&
+    tenant?.id &&
+    tenant?.slug === tenantSlug &&
+    tenant?.status === "ACTIVE"
+  );
+
+  if (!isValidTenant) {
+    return <RootDocument><TenantNotFound /></RootDocument>;
   }
 
   await Promise.all([
@@ -72,51 +119,18 @@ export default async function RootLayout({
       queryFn: () => checkGraphoodHealth(graphoodServerClient),
     }),
     queryClient.prefetchQuery({
-      queryKey: graphoodQueryKeys.memberships(resolvedTenantSlug),
-      queryFn: () => getMemberships(resolvedTenantSlug, graphoodServerClient),
+      queryKey: graphoodQueryKeys.memberships(tenantSlug),
+      queryFn: () => getMemberships(tenantSlug, graphoodServerClient),
     }),
   ]);
 
   const dehydratedState = dehydrate(queryClient);
 
-  const tenant = tenantData?.data.tenant;
-
-  const isValidTenant = Boolean(
-    tenantData?.success &&
-    tenant?.id &&
-    tenant?.status === "ACTIVE"
-  );
-
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">
-        {isValidTenant ? (
-          <Providers dehydratedState={dehydratedState} tenantSlug={resolvedTenantSlug}>
-            {isDemoMode && (
-              <div
-                role="status"
-                dir="rtl"
-                className="border-b border-amber-300 bg-amber-50 px-4 py-3 text-center text-sm font-medium text-amber-950"
-              >
-                أنت الآن في البيئة التجريبية لأن المتجر «{tenantSlug}» غير موجود.
-              </div>
-            )}
-            {children}
-          </Providers>
-        ) : (
-          <div className="flex min-h-screen w-full items-center justify-center bg-gray-50 text-slate-800">
-            <div className="text-center dir-rtl">
-              <h1 className="text-6xl font-extrabold text-slate-900">404</h1>
-              <p className="mt-4 text-xl font-medium">
-                المتجر غير موجود أو غير مفعل حالياً.
-              </p>
-            </div>
-          </div>
-        )}
-      </body>
-    </html>
+    <RootDocument>
+      <Providers dehydratedState={dehydratedState} tenantSlug={tenantSlug}>
+        {children}
+      </Providers>
+    </RootDocument>
   );
 }
