@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { config, fallbackDocument, normalizeDocument, type SiteDocument } from "./editor-types";
+import { sharedConfig as config, fallbackDocument, normalizeDocument, type SiteDocument } from "./editor-types";
 import "@measured/puck/puck.css";
 const Puck = dynamic(() => import("@measured/puck").then((module) => module.Puck), { ssr: false });
 type Notice = { kind: "idle" | "loading" | "success" | "error"; text: string };

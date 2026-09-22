@@ -1,73 +1,29 @@
 import "server-only";
+import { SiteDocumentV1Schema, fallbackDocument, type SiteDocumentV1 } from "@/lib/site-contract";
 
-export type GraphoodBlock = {
-  id?: string;
-  type: string;
-  props?: Record<string, unknown>;
-};
+const memoryCache = new Map<string, SiteDocumentV1>();
 
-export type GraphoodLayout = {
-  content?: GraphoodBlock[];
-  root?: Record<string, unknown>;
-};
-
-type GraphoodPageResponse = {
-  draft_data?: unknown;
-  published_data?: unknown;
-  layout?: unknown;
-  data?: unknown;
-};
-
-function requiredEnvironment(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required Graphood configuration: ${name}`);
-  return value;
-}
-
+type ResponseBody = { tenant?: string; data?: unknown; document?: unknown; publishedAt?: string | null };
 function endpointFor(tenantSlug: string, pathname: string): URL {
-  const baseUrl = process.env.GRAPHOOD_API_URL ?? requiredEnvironment("NEXT_PUBLIC_GRAPHOOD_BASE_URL");
-  const encodedTenant = encodeURIComponent(tenantSlug);
-  const template = process.env.GRAPHOOD_PAGE_LAYOUT_ENDPOINT;
-  const endpoint = template
-    ? template.replace(":tenantSlug", encodedTenant)
-    : `/api/v1/tenants/${encodedTenant}/pages`;
-  const url = new URL(endpoint, baseUrl);
-  url.searchParams.set("path", pathname);
-  return url;
+  const base = process.env.GRAPHOOD_API_URL ?? process.env.NEXT_PUBLIC_GRAPHOOD_BASE_URL ?? "http://localhost:3000";
+  const url = new URL(`/api/tenants/${encodeURIComponent(tenantSlug)}/site`, base);
+  url.searchParams.set("path", pathname); return url;
 }
-
-function extractLayout(response: GraphoodPageResponse, preview: boolean): GraphoodLayout {
-  const selected = preview ? response.draft_data : response.published_data;
-  const layout = selected ?? response.layout ?? response.data;
-
-  if (!layout || typeof layout !== "object") return { content: [] };
-  return layout as GraphoodLayout;
+function validate(value: unknown): SiteDocumentV1 | null {
+  const parsed = SiteDocumentV1Schema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
-
-export async function getGraphoodPageLayout({
-  tenantSlug,
-  pathname = "/",
-  preview = false,
-}: {
-  tenantSlug: string;
-  pathname?: string;
-  preview?: boolean;
-}): Promise<GraphoodLayout> {
-  if (!tenantSlug) return { content: [] };
-
-  const response = await fetch(endpointFor(tenantSlug, pathname), {
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${requiredEnvironment("GRAPHOOD_SERVER_API_KEY")}`,
-      ...(preview ? { "X-Graphood-Preview": "draft" } : {}),
-    },
-    cache: preview ? "no-store" : "force-cache",
-    next: preview ? undefined : { revalidate: 60 },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Graphood page request failed: ${response.status} ${response.statusText}`);
+export async function getGraphoodPageDocument({ tenantSlug, pathname = "/", preview = false }: { tenantSlug: string; pathname?: string; preview?: boolean }): Promise<SiteDocumentV1> {
+  const key = `${tenantSlug}:${pathname}`;
+  try {
+    const response = await fetch(endpointFor(tenantSlug, pathname), { headers: { Accept: "application/json" }, cache: preview ? "no-store" : "force-cache", next: preview ? undefined : { revalidate: 60 } });
+    if (!response.ok) throw new Error(`Graphood API returned ${response.status}`);
+    const body = await response.json() as ResponseBody;
+    const document = validate(body.document ?? body.data);
+    if (!document) throw new Error("Graphood document failed SiteDocumentV1 validation");
+    memoryCache.set(key, document); return document;
+  } catch (error) {
+    console.error("[Graphood document]", error);
+    return memoryCache.get(key) ?? fallbackDocument;
   }
-
-  return extractLayout((await response.json()) as GraphoodPageResponse, preview);
 }

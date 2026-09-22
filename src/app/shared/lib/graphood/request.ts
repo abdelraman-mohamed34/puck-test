@@ -44,6 +44,10 @@ function buildUrl(baseUrl: string, endpoint: string): string {
     return `${baseUrl.replace(/\/$/, '')}/${endpoint.replace(/^\//, '')}`;
 }
 
+function isPublishedTenantSiteEndpoint(endpoint: string): boolean {
+    return /^\/api\/tenants\/[^/]+\/site(?:[/?]|$)/.test(endpoint);
+}
+
 export function createGraphoodClient({
     baseUrl,
     apiKey,
@@ -55,7 +59,8 @@ export function createGraphoodClient({
             options: RequestInit = {},
         ): Promise<T> {
             const resolvedBaseUrl = requireConfig(baseUrl, configNames.baseUrl);
-            const resolvedApiKey = requireConfig(apiKey, configNames.apiKey);
+            const resolvedApiKey = apiKey?.trim();
+            const isPublishedTenantSite = isPublishedTenantSiteEndpoint(endpoint);
             const { headers, ...requestOptions } = options;
             const requestHeaders = new Headers(headers);
 
@@ -63,12 +68,18 @@ export function createGraphoodClient({
                 requestHeaders.set('Content-Type', 'application/json');
             }
 
-            requestHeaders.set('Authorization', `Bearer ${resolvedApiKey}`);
+            if (resolvedApiKey && !isPublishedTenantSite) {
+                requestHeaders.set('Authorization', `Bearer ${resolvedApiKey}`);
+            }
 
             const response = await fetch(buildUrl(resolvedBaseUrl, endpoint), {
                 ...requestOptions,
                 headers: requestHeaders,
             });
+
+            if (response.status === 404) {
+                return null as T;
+            }
 
             if (!response.ok) {
                 const errorBody: unknown = await response.json().catch(() => null);
