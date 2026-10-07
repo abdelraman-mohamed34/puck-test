@@ -1,15 +1,20 @@
-import type { ConfigProps } from "./types/puck.types";
-import { Config } from "@measured/puck";
+import type { Config } from "@measured/puck";
+import { Hero, TextSection, FeatureGrid } from "@/lib/components";
+import type { HeroProps } from "@/lib/components/Hero";
+import type { TextSectionProps } from "@/lib/components/TextSection";
+import type { FeatureGridProps } from "@/lib/components/FeatureGrid";
 
-import { Header, HeadingBlock, FreeZone, Box, Grid } from "./components";
+export type PuckConfigProps = {
+  Hero: HeroProps;
+  TextSection: TextSectionProps;
+  FeatureGrid: FeatureGridProps;
+};
 
-export const config: Config<ConfigProps> = {
+const config: Config<PuckConfigProps> = {
   components: {
-    Header,
-    HeadingBlock,
-    FreeZone,
-    Box,
-    Grid,
+    Hero,
+    TextSection,
+    FeatureGrid,
   },
 };
 

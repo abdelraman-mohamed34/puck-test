@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Config, Data } from "@measured/puck";
+import { Hero, TextSection, FeatureGrid } from "./components";
 
 const componentSchema = z.object({ type: z.string().min(1), id: z.string().min(1), props: z.record(z.string(), z.unknown()) }).strict();
 
@@ -18,41 +19,19 @@ export const fallbackDocument: SiteDocument = {
   version: 1,
   root: { props: {} },
   content: [
-    { type: "Hero", id: "hero-1", props: { title: "Suty test site", description: "A small Graphood-connected page experiment.", buttonLabel: "Explore", buttonUrl: "#features", backgroundColor: "#172554", textColor: "#ffffff" } },
-    { type: "TextSection", id: "text-1", props: { title: "Connected editing", body: "Edit this document in Puck and watch the preview update instantly.", alignment: "center" } },
-    { type: "FeatureGrid", id: "features-1", props: { title: "Features", items: [{ title: "Drafts", description: "Save work without publishing." }, { title: "Preview", description: "See the same components in an iframe." }] } },
+    { type: "Hero", id: "hero-1", props: { title: "مرحباً بك في متجرنا", description: "نوفر لك أفضل المنتجات بأسعار تنافسية وجودة عالية", buttonLabel: "تصفح المنتجات", buttonUrl: "/products", backgroundColor: "#0F172A", textColor: "#F8FAFC" } },
+    { type: "TextSection", id: "text-1", props: { title: "تجربة تسوق مميزة", body: "استمتع بتجربة تسوق سهلة وآمنة مع خيارات دفع متعددة وشحن سريع.", alignment: "center" } },
+    { type: "FeatureGrid", id: "features-1", props: { title: "مميزاتنا", items: [{ title: "شحن مجاني", description: "شحن مجاني للطلبات فوق 200 ريال" }, { title: "دفع آمن", description: "خيارات دفع متعددة وآمنة 100%" }] } },
   ],
 };
 
 export const sharedConfig: Config = {
   components: {
-    Hero: {
-      fields: { title: { type: "text" }, description: { type: "textarea" }, buttonLabel: { type: "text" }, buttonUrl: { type: "text" }, backgroundColor: { type: "text" }, textColor: { type: "text" } },
-      defaultProps: fallbackDocument.content[0].props,
-      render: (props) => <Hero {...(props as unknown as Parameters<typeof Hero>[0])} />,
-    },
-    TextSection: {
-      fields: { title: { type: "text" }, body: { type: "textarea" }, alignment: { type: "select", options: [{ label: "Left", value: "left" }, { label: "Center", value: "center" }, { label: "Right", value: "right" }] } },
-      defaultProps: fallbackDocument.content[1].props,
-      render: (props) => <TextSection {...(props as unknown as Parameters<typeof TextSection>[0])} />,
-    },
-    FeatureGrid: {
-      fields: { title: { type: "text" }, items: { type: "array", arrayFields: { title: { type: "text" }, description: { type: "textarea" } } } },
-      defaultProps: fallbackDocument.content[2].props,
-      render: (props) => <FeatureGrid {...(props as unknown as Parameters<typeof FeatureGrid>[0])} />,
-    },
+    Hero: Hero,
+    TextSection: TextSection,
+    FeatureGrid: FeatureGrid,
   },
 };
-
-export function Hero({ title, description, buttonLabel, buttonUrl, backgroundColor, textColor }: { title: string; description: string; buttonLabel: string; buttonUrl: string; backgroundColor: string; textColor: string; id?: string; puck?: unknown; editMode?: boolean }) {
-  return <section style={{ backgroundColor, color: textColor }} className="preview-hero"><h1>{title}</h1><p>{description}</p><a href={buttonUrl || "#"} onClick={(event) => event.preventDefault()}>{buttonLabel}</a></section>;
-}
-export function TextSection({ title, body, alignment }: { title: string; body: string; alignment: string; id?: string; puck?: unknown; editMode?: boolean }) {
-  return <section className="preview-text" style={{ textAlign: alignment as "left" | "center" | "right" }}><h2>{title}</h2><p>{body}</p></section>;
-}
-export function FeatureGrid({ title, items }: { title: string; items: Array<{ title: string; description: string }>; id?: string; puck?: unknown; editMode?: boolean }) {
-  return <section className="preview-features"><h2>{title}</h2><div className="preview-grid">{items.map((item, index) => <article key={`${item.title}-${index}`}><h3>{item.title}</h3><p>{item.description}</p></article>)}</div></section>;
-}
 
 export function normalizeDocument(value: unknown): SiteDocument {
   const parsed = puckDocumentSchema.safeParse(value);
